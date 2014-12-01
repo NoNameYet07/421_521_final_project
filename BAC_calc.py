@@ -15,9 +15,9 @@ phys_info=phys_split[3]
 
 # Assigning gender constant
 
-if int(phys_info[0])==1:
+if int(phys_info[0])==1 or 'F':
     gen_const= 0.58
-elif int(phys_info[0])==2:
+elif int(phys_info[0])==2 or 'M':
     gen_const= 0.49
 
 # Assigning other BAC constants 
