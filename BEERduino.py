@@ -5,6 +5,7 @@ open_time=2 # number of seconds the solenoid will remain open
 pour_vol=16 # Volume of beer dispensed per pour (in oz.)
 beer_ABV= 0.05  # Alcoohol by volume for the current keg
 intoxicated=0.16 # BAC cutoff level
+solenoidPin = 3
 # --------------------------------------------------------------
 
 # Setup GPIO pins for switching the solenoid valve
@@ -12,9 +13,9 @@ from time import sleep
 import RPi.GPIO as GPIO
 
 GPIO.setmode(GPIO.BOARD) # Identifies the pin numbers to the pi
-GPIO.setwarnings(False)
-GPIO.setup(3, GPIO.OUT) # Should sets pin #3 as an output...but doesnt work yet
-GPIO.setup(3, GPIO.LOW) # Turns initial output for pin 3 off
+#GPIO.setwarnings(False)
+GPIO.setup(solenoidPin, GPIO.OUT) # Should sets pin #3 as an output...but doesnt work yet
+GPIO.output(solenoidPin, GPIO.LOW) # Turns initial output for pin 3 off
 
 # Import necessary functions 
 from CheckLicense import check_license #function for checking age and validity of DL
@@ -148,6 +149,29 @@ def calc_BAC(DL,ABV,pour_vol):
     swipes.close()
     return BAC
     
+def recordSwipe(DL, mode, swipefile="swipes.txt"):
+    '''Records card swipe to swipes file.
+    Inputs:
+        DL (DLicense obj) - driver license to be recorded
+        mode (str) - current operating mode
+        swipefile (str) - path to swipes file that will be appended'''
+    swipefile = open(swipefile, 'a')
+    swipefile.write(DL.lastName+","+DL.firstName+" ")
+    swipefile.write(DL.num+" ")
+    swipefile.write(mode+" ")
+    swipefile.write(time.strftime("%Y-%m-%d")+" ")
+    swipefile.write(str(time.time())+"\n")
+    swipefile.close()
+
+def dispenseBeer(open_time=open_time, pin=solenoidPin):
+    '''Dispenses beer for the set amount of time by opening the
+    solenoid valve on the given pin.'''
+    GPIO.output(pin, GPIO.HIGH) # Sends output through pin 3 to open solenoid
+    print 'Beer time!'
+    sleep(open_time); # Holds the solenoid open for a designated period of time (user defined variables)
+    GPIO.output(pin, GPIO.LOW) #Closes solenoid
+
+
 # Setting a while loop to run continuously and a try statement for error handling------------------
 while True:
     try:
@@ -179,39 +203,30 @@ while True:
                 
                 # Send text from magnetic strip swipe to the function 'check_license' and collect output
                 raw_text=getpass.getpass(color.GREEN + 'Swipe card now:   ' + color.END).strip() 
-                dl = DLicense(raw_text)
+                DL = DLicense(raw_text)
                 
                 # Check to see if the user is a registered user
                 users=open("users_list.txt", 'r') # use defined users list
-                if dl.isValid:
+                if DL.isValid:
                     for line in users:
-                        if dl.num in line:
-                            dl.isValid = True
+                        if DL.num in line:
+                            DL.isValid = True
                         else: 
                             print 'Not registered user'
-                            dl.isValid=False
+                            DL.isValid=False
                 users.close()
                 
                 # Calculating the user's current BAC
-                BAC1_raw=calc_BAC(raw_text, beer_ABV, pour_vol) # Sends text from DL swipe, ABV of current beer and pour vol to func calc_BAC 
+                BAC1_raw=calc_BAC(DL, beer_ABV, pour_vol) # Sends text from DL swipe, ABV of current beer and pour vol to func calc_BAC 
                 BAC1=format(BAC1_raw, '.3f') #formats BAC to 3 decimals
 
                 # Opening the solenoid to dispense beer
-                if DLicense['isValid']:
-                    GPIO.setup(3, GPIO.HIGH) # Sends output through pin 3 to open solenoid
-                    print 'Beer time!'
-                    sleep(open_time); # Holds the solenoid open for a designated period of time (user defined variables)
-                    GPIO.setup(3, GPIO.LOW) #Closes solenoid
-                    with open("swipes.txt", "a") as swipefile:  # Prints the user's info (name, date, and DL number) to a specified 'swipes' file
-                        swipefile.write(DLicense['last_name']+","+DLicense['fist_name']+" ")
-                        swipefile.write(DLicense['DL_num']+" ")
-                        swipefile.write(mode+" ")
-                        swipefile.write(time.strftime("%Y-%m-%d")+" ")
-                        swipefile.write(str(time.time())+"\n")
-                    swipefile.close()
+                if DL.isValid:
+                    dispenseBeer()
+                    recordSwipe(DL, mode)
 
                 # Calculating the BAC after finishing this beer
-                BAC2_raw=calc_BAC(raw_text, beer_ABV, pour_vol) #Calculates the user's BAC after drinking this beer
+                BAC2_raw=calc_BAC(DL, beer_ABV, pour_vol) #Calculates the user's BAC after drinking this beer
                 BAC2=format(BAC2_raw, '.3f')
 
                 print color.BOLD + "Your current BAC is",BAC1,"after this beer your BAC will be",BAC2 + color.END + '/n'
@@ -227,31 +242,20 @@ while True:
                  
                 # Send text from magnetic strip swipe to the function 'check_license' and collect output
                 raw_text=getpass.getpass(color.GREEN + 'Swipe card now:   ' + color.END).strip() 
-                DLicense=check_license(raw_text)
+                DL = DLicense(raw_text)
 
                 # Calculating the current BAC
-                BAC1_raw=calc_BAC(raw_text, beer_ABV, pour_vol)
+                BAC1_raw=calc_BAC(DL, beer_ABV, pour_vol)
                 BAC1=format(BAC1_raw, '.3f')
 
                 # Opening the solenoid 
-                if DLicense['isValid']:
-                    GPIO.setup(3, GPIO.HIGH)
-                    print 'Beer time!'
-                    sleep(open_time);
-                    GPIO.setup(3, GPIO.LOW)  
-                    # write user information to 'swipes' file
-                    with open("swipes.txt", "a") as swipefile:
-                        swipefile.write(DLicense['last_name']+","+DLicense['fist_name']+" ")
-                        swipefile.write(DLicense['DL_num']+" ")
-                        swipefile.write(mode+" ")
-                        swipefile.write(time.strftime("%Y-%m-%d")+" ")
-                        swipefile.write(str(time.time())+"\n")
-                    swipefile.close()
+                if DL.isValid:
+                    dispenseBeer()
+                    recordSwipe(DL, mode)
 
                 # Calculating the BAC after finishing this beer
-                BAC2_raw=calc_BAC(raw_text, beer_ABV, pour_vol)
+                BAC2_raw=calc_BAC(DL, beer_ABV, pour_vol)
                 BAC2=format(BAC2_raw, '.3f')
-
                 print color.BOLD + "Your current BAC is",BAC1,"after this beer your BAC will be",BAC2 + color.END + '/n'
 
             except (NameError, IndexError, ValueError):
@@ -265,41 +269,29 @@ while True:
 
                 # Send text from magnetic strip swipe to the function 'check_license' and collect output
                 raw_text=getpass.getpass(color.GREEN + 'Swipe card now:   ' + color.END).strip() 
-                DLicense=check_license(raw_text)
+                DL = DLicense(raw_text)
 
                 # Calculating the current BAC
-                BAC1_raw=calc_BAC(raw_text, beer_ABV, pour_vol)
+                BAC1_raw=calc_BAC(DL, beer_ABV, pour_vol)
                 BAC1=format(BAC1_raw, '.3f')
 
                 # Checking to see if the user has been previously banned from the keg by searching the 'blacklist' file
                 blacklist=open("blacklist.txt", 'r')
                 blacklisted = False
-                if DLicense['isValid']:
+                if DL.isValid:
                     for line in blacklist:
-                        if DLicense['last_name'] in line and DLicense['first_name'] in line:
+                        if DL.lastName in line and DL.firstName in line:
                             print "No beer for you!"
                             blacklisted=True
                                      
                 #Opening the solenoid (user must not be banned and must have a BAC below the defined level)
-                if not blacklisted and DLicense['isValid']:
+                if not blacklisted and DL.isValid:
                     if BAC1 < intoxicated:
-                        GPIO.setup(3, GPIO.HIGH) #Opens solenoid
-                        print 'Beer time!'
-                        print BAC
-                        sleep(open_time);
-                        GPIO.setup(3, GPIO.LOW)
-
-                        # Write user information to 'swipes' file
-                        with open("swipes.txt", "a") as swipefile:
-                             swipefile.write(DLicense['last_name']+","+DLicense['fist_name']+" ")
-                             swipefile.write(DLicense['DL_num']+" ")
-                             swipefile.write(mode+" ")
-                             swipefile.write(time.strftime("%Y-%m-%d")+" ")
-                             swipefile.write(str(time.time())+"\n")
-                        swipefile.close()
+                        dispenseBeer()
+                        recordSwipe(DL, mode)
 
                         #Calculating the BAC after finishing this beer
-                        BAC2_raw=calc_BAC(raw_text, beer_ABV, pour_vol)
+                        BAC2_raw=calc_BAC(DL, beer_ABV, pour_vol)
                         BAC2=format(BAC2_raw, '.3f')
                         print color.BOLD + "Your current BAC is",BAC1,"after this beer your BAC will be",BAC2 + color.END + '/n'
                     else:
@@ -313,3 +305,6 @@ while True:
     except (NameError, IndexError, ValueError):
         print color.RED + 'Error!' + color.END
         continue
+    
+    finally:
+        GPIO.cleanup()
